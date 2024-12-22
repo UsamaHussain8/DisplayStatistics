@@ -30,7 +30,6 @@ public class StatsWindow extends AnchorPane
     @FXML
     private void initialize() {
         statsTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-        System.out.println("Initialize StatsWindow");
         try {
             populateTableView();
         }
@@ -75,8 +74,6 @@ public class StatsWindow extends AnchorPane
     }
 
     private void populateTableView() throws SQLException, ClassNotFoundException {
-        System.out.println("In populateTableView");
-
         Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
         String url = "jdbc:sqlserver://localhost:1433;user=admin;password=test;databaseName=Players;encrypt=False"; // DESKTOP-MIQ3N8K
 

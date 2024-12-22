@@ -12,12 +12,11 @@ public class HelloApplication extends Application {
     private StatsWindow statsWindow;
     @Override
     public void start(Stage stage) throws IOException, SQLException, ClassNotFoundException {
-//        FXMLLoader fxmlLoader = new FXMLLoader(HelloApplication.class.getResource("hello-view.fxml"));
-//        Scene scene = new Scene(fxmlLoader.load(), 320, 240);
-//        stage.setTitle("Hello!");
-//        stage.setScene(scene);
-//        stage.show();
         statsWindow = new StatsWindow();
+        Scene scene = new Scene(statsWindow, 800, 400);
+        stage.setScene(scene);
+        stage.setTitle("Stats App");
+        stage.show();
     }
 
     public static void main(String[] args) {

@@ -24,6 +24,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.DriverManager;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class StatsWindow extends AnchorPane
@@ -138,33 +139,45 @@ public class StatsWindow extends AnchorPane
             return;
         }
 
+        int numIds = ids.length;
+
         // Collect the IDs of the selected rows
-        StringBuilder queryPlaceholders = new StringBuilder();
-        for (int i = 0; i < selectedItems.size(); i++) {
-            queryPlaceholders.append("?");
-            if (i < selectedItems.size() - 1) {
-                queryPlaceholders.append(", ");
-            }
-        }
+//        StringBuilder queryPlaceholders = new StringBuilder();
+//        for (int i = 0; i < selectedItems.size(); i++) {
+//            queryPlaceholders.append("?");
+//            if (i < selectedItems.size() - 1) {
+//                queryPlaceholders.append(", ");
+//            }
+//        }
+        String queryPlaceholders = String.join(", ", Collections.nCopies(numIds, "?"));
 
         // Construct the SQL query
-        String query = "SELECT Role, COUNT(*) AS Num_Players FROM Player WHERE ID IN (" +
-                queryPlaceholders + ") GROUP BY Role";
+//        String query = "SELECT Role, COUNT(*) AS Num_Players FROM Player WHERE ID IN (" +
+//                queryPlaceholders + ") GROUP BY Role";
+        String query = "SELECT Role, COUNT(*) AS Num_Players, " +
+                "(SELECT COUNT(DISTINCT Role) FROM Player WHERE ID IN (" + queryPlaceholders + ")) AS DistinctRoleCount " +
+                "FROM Player " +
+                "WHERE ID IN (" + queryPlaceholders + ") " +
+                "GROUP BY Role;";
 
         // Execute the query
         try (PreparedStatement preparedStatement = sqlConn.prepareStatement(query)) {
             // Set the parameters for the placeholders
-            for (int i = 0; i < ids.length; i++) {
-                preparedStatement.setInt(i + 1, ids[i]); // Indices for setInt start at 1
+            for (int i = 0; i < numIds; i++) {
+                preparedStatement.setInt(i + 1, ids[i]); // For the first occurrence
+                preparedStatement.setInt(i + 1 + numIds, ids[i]); // For the second occurrence
             }
 
             // Execute the query and process the results
             ResultSet resultSet = preparedStatement.executeQuery();
             StringBuilder statsResult = new StringBuilder();
+
+            statsResult.append("Total Roles: ");
             while (resultSet.next()) {
                 String role = resultSet.getString("Role");
                 int count = resultSet.getInt("Num_Players");
-                statsResult.append("Role: ").append(role).append(", Count: ").append(count).append("\n");
+                int numRoles = resultSet.getInt("DistinctRoleCount");
+                statsResult.append(numRoles).append("\n").append("Role: ").append(role).append(", Count: ").append(count).append("\n");
             }
 
             // Display the results in the TextArea

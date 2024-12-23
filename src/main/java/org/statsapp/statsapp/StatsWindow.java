@@ -11,6 +11,7 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.control.*;
 import javafx.scene.layout.AnchorPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.scene.Scene;
 
@@ -20,15 +21,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.DriverManager;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 public class StatsWindow extends AnchorPane
 {
     @FXML private TableView statsTable;
     @FXML private TextArea statsArea;
     @FXML private ScrollPane statsScrollPane;
+    @FXML private Accordion statsAccordion;
 
     private Connection sqlConn;
 
@@ -43,7 +43,7 @@ public class StatsWindow extends AnchorPane
             statsTable.getSelectionModel().getSelectedItems().addListener((ListChangeListener<ObservableList<String>>) change -> {
                 int[] ids = new int[selectedItems.size()];
                 for (int i = 0; i < selectedItems.size(); i++) {
-                    ids[i] = Integer.parseInt(selectedItems.get(i).get(0)); // Assume getId() fetches the primary key (SR_NO)
+                    ids[i] = Integer.parseInt(selectedItems.get(i).get(0));
                 }
                 calculateStats(ids);
             });
@@ -128,17 +128,17 @@ public class StatsWindow extends AnchorPane
         return;
     }
 
-    public void calculateStats(int[] ids) {
+    public ResultSet calculateStats(int[] ids) {
         // Retrieve selected rows from the TableView
         ObservableList<ObservableList<String>> selectedItems = statsTable.getSelectionModel().getSelectedItems();
 
         if (selectedItems.isEmpty()) {
+            StringBuilder error = new StringBuilder("No players selected");
             statsArea.setText("No rows selected.");
-            return;
+            return null;
         }
 
         int numIds = ids.length;
-
         String queryPlaceholders = String.join(", ", Collections.nCopies(numIds, "?"));
 
         String query =
@@ -157,15 +157,16 @@ public class StatsWindow extends AnchorPane
                         "FROM SelectedPlayers " +
                         "GROUP BY YEAR(Debut) " +
                         "UNION ALL " +
-                        "SELECT 'Total Categories' AS Category, 'Nationalities' AS Value, COUNT(DISTINCT Nationality) AS Count " +
+                        "SELECT 'Nationality' AS Category, 'Nationalities' AS Value, COUNT(DISTINCT Nationality) AS Count " +
                         "FROM SelectedPlayers " +
                         "UNION ALL " +
-                        "SELECT 'Total Categories', 'Roles', COUNT(DISTINCT Role) AS Count " +
+                        "SELECT 'Roles' AS Category, 'Roles' AS Value, COUNT(DISTINCT Role) AS Count " +
                         "FROM SelectedPlayers " +
                         "UNION ALL " +
-                        "SELECT 'Total Categories', 'Debut Years', COUNT(DISTINCT YEAR(Debut)) AS Count " +
+                        "SELECT 'Years' AS Category, 'Years' AS Value, COUNT(DISTINCT YEAR(Debut)) AS Count " +
                         "FROM SelectedPlayers;";
 
+        ResultSet resultSet = null;
         try (PreparedStatement preparedStatement = sqlConn.prepareStatement(query)) {
             // Set the parameters for the placeholders
             for (int i = 0; i < numIds; i++) {
@@ -174,26 +175,58 @@ public class StatsWindow extends AnchorPane
             }
 
             // Execute the query and process the results
-            ResultSet resultSet = preparedStatement.executeQuery();
-            StringBuilder statsResult = new StringBuilder();
-
-            while (resultSet.next()) {
-                String category = resultSet.getString("Category");
-                String value = resultSet.getString("Value");
-                int count = resultSet.getInt("Count");
-                statsResult.append("Category: ").append(category)
-                        .append(", Value: ").append(value)
-                        .append(", Count: ").append(count)
-                        .append("\n");
-            }
-
-        // Display the results in the TextArea
-        statsArea.setText(statsResult.toString());
+            resultSet = preparedStatement.executeQuery();
+            displayStats(resultSet);
         }
+
         catch (SQLException e) {
             e.printStackTrace();
             statsArea.setText("Error fetching statistics: " + e.getMessage());
         }
+
+        return resultSet;
     }
 
+    public void displayStats(ResultSet statsResult) throws SQLException {
+        Map<String, List<String>> categoryValues = new LinkedHashMap<>();
+        Map<String, Integer> distinctCounts = new HashMap<>();
+
+        while (statsResult.next()) {
+            String category = statsResult.getString("Category");
+            String value = statsResult.getString("Value");
+            int count = statsResult.getInt("Count");
+
+            categoryValues.putIfAbsent(category, new ArrayList<>());
+            if (!value.equalsIgnoreCase(category)) { // Ignore distinct count rows for now
+                categoryValues.get(category).add(value + " (" + count + ")");
+            }
+            else {
+                distinctCounts.put(category, count); // Store distinct counts
+            }
+        }
+
+        // Create TitledPanes
+        for (Map.Entry<String, List<String>> entry : categoryValues.entrySet()) {
+            String category = entry.getKey();
+            List<String> values = entry.getValue();
+
+            // Create VBox for the content
+            VBox content = new VBox();
+            content.setSpacing(10);
+
+            // Add checkboxes
+            for (String value : values) {
+                CheckBox checkBox = new CheckBox(value);
+                content.getChildren().add(checkBox);
+            }
+
+            // Create TitledPane
+            int distinctCount = distinctCounts.getOrDefault(category, 0);
+            TitledPane titledPane = new TitledPane(category + " (" + distinctCount + ")", content);
+
+            // Add to Accordion
+            statsAccordion.getPanes().add(titledPane);
+        }
+    }
 }
+

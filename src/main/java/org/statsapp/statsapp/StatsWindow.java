@@ -9,10 +9,7 @@ import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
-import javafx.scene.control.SelectionMode;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.TextArea;
+import javafx.scene.control.*;
 import javafx.scene.layout.AnchorPane;
 import javafx.stage.Stage;
 import javafx.scene.Scene;
@@ -31,6 +28,7 @@ public class StatsWindow extends AnchorPane
 {
     @FXML private TableView statsTable;
     @FXML private TextArea statsArea;
+    @FXML private ScrollPane statsScrollPane;
 
     private Connection sqlConn;
 
@@ -141,47 +139,56 @@ public class StatsWindow extends AnchorPane
 
         int numIds = ids.length;
 
-        // Collect the IDs of the selected rows
-//        StringBuilder queryPlaceholders = new StringBuilder();
-//        for (int i = 0; i < selectedItems.size(); i++) {
-//            queryPlaceholders.append("?");
-//            if (i < selectedItems.size() - 1) {
-//                queryPlaceholders.append(", ");
-//            }
-//        }
         String queryPlaceholders = String.join(", ", Collections.nCopies(numIds, "?"));
 
-        // Construct the SQL query
-//        String query = "SELECT Role, COUNT(*) AS Num_Players FROM Player WHERE ID IN (" +
-//                queryPlaceholders + ") GROUP BY Role";
-        String query = "SELECT Role, COUNT(*) AS Num_Players, " +
-                "(SELECT COUNT(DISTINCT Role) FROM Player WHERE ID IN (" + queryPlaceholders + ")) AS DistinctRoleCount " +
-                "FROM Player " +
-                "WHERE ID IN (" + queryPlaceholders + ") " +
-                "GROUP BY Role;";
+        String query =
+                "WITH SelectedPlayers AS ( " +
+                        "    SELECT * FROM Player WHERE ID IN (" + queryPlaceholders + ") " +
+                        ") " +
+                        "SELECT 'Nationality' AS Category, CAST(Nationality AS VARCHAR) AS Value, COUNT(*) AS Count " +
+                        "FROM SelectedPlayers " +
+                        "GROUP BY Nationality " +
+                        "UNION ALL " +
+                        "SELECT 'Role' AS Category, CAST(Role AS VARCHAR) AS Value, COUNT(*) AS Count " +
+                        "FROM SelectedPlayers " +
+                        "GROUP BY Role " +
+                        "UNION ALL " +
+                        "SELECT 'Debut Year' AS Category, CAST(YEAR(Debut) AS VARCHAR) AS Value, COUNT(*) AS Count " +
+                        "FROM SelectedPlayers " +
+                        "GROUP BY YEAR(Debut) " +
+                        "UNION ALL " +
+                        "SELECT 'Total Categories' AS Category, 'Nationalities' AS Value, COUNT(DISTINCT Nationality) AS Count " +
+                        "FROM SelectedPlayers " +
+                        "UNION ALL " +
+                        "SELECT 'Total Categories', 'Roles', COUNT(DISTINCT Role) AS Count " +
+                        "FROM SelectedPlayers " +
+                        "UNION ALL " +
+                        "SELECT 'Total Categories', 'Debut Years', COUNT(DISTINCT YEAR(Debut)) AS Count " +
+                        "FROM SelectedPlayers;";
 
-        // Execute the query
         try (PreparedStatement preparedStatement = sqlConn.prepareStatement(query)) {
             // Set the parameters for the placeholders
             for (int i = 0; i < numIds; i++) {
-                preparedStatement.setInt(i + 1, ids[i]); // For the first occurrence
-                preparedStatement.setInt(i + 1 + numIds, ids[i]); // For the second occurrence
+                // Set the parameters for the first occurrence
+                preparedStatement.setInt(i + 1, ids[i]);
             }
 
             // Execute the query and process the results
             ResultSet resultSet = preparedStatement.executeQuery();
             StringBuilder statsResult = new StringBuilder();
 
-            statsResult.append("Total Roles: ");
             while (resultSet.next()) {
-                String role = resultSet.getString("Role");
-                int count = resultSet.getInt("Num_Players");
-                int numRoles = resultSet.getInt("DistinctRoleCount");
-                statsResult.append(numRoles).append("\n").append("Role: ").append(role).append(", Count: ").append(count).append("\n");
+                String category = resultSet.getString("Category");
+                String value = resultSet.getString("Value");
+                int count = resultSet.getInt("Count");
+                statsResult.append("Category: ").append(category)
+                        .append(", Value: ").append(value)
+                        .append(", Count: ").append(count)
+                        .append("\n");
             }
 
-            // Display the results in the TextArea
-            statsArea.setText(statsResult.toString());
+        // Display the results in the TextArea
+        statsArea.setText(statsResult.toString());
         }
         catch (SQLException e) {
             e.printStackTrace();

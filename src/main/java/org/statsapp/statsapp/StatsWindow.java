@@ -190,43 +190,54 @@ public class StatsWindow extends AnchorPane
     public void displayStats(ResultSet statsResult) throws SQLException {
         Map<String, List<String>> categoryValues = new LinkedHashMap<>();
         Map<String, Integer> distinctCounts = new HashMap<>();
-
         while (statsResult.next()) {
             String category = statsResult.getString("Category");
             String value = statsResult.getString("Value");
             int count = statsResult.getInt("Count");
-
             categoryValues.putIfAbsent(category, new ArrayList<>());
-            if (!value.equalsIgnoreCase(category)) { // Ignore distinct count rows for now
+            if (!value.equalsIgnoreCase(category)) {
                 categoryValues.get(category).add(value + " (" + count + ")");
             }
             else {
-                distinctCounts.put(category, count); // Store distinct counts
+                distinctCounts.put(category, count);
             }
         }
 
-        // Create TitledPanes
+        // Update or create TitledPanes
         for (Map.Entry<String, List<String>> entry : categoryValues.entrySet()) {
             String category = entry.getKey();
             List<String> values = entry.getValue();
+            int distinctCount = distinctCounts.getOrDefault(category, 0);
 
-            // Create VBox for the content
-            VBox content = new VBox();
-            content.setSpacing(10);
+            // Find existing TitledPane or create a new one
+            TitledPane titledPane = statsAccordion.getPanes()
+                    .stream()
+                    .filter(tp -> tp.getText().startsWith(category))
+                    .findFirst()
+                    .orElse(null);
 
-            // Add checkboxes
+            if (titledPane == null) {
+                // Create a new TitledPane
+                VBox content = new VBox();
+                content.setSpacing(10);
+                titledPane = new TitledPane(category + " (" + distinctCount + ")", content);
+                statsAccordion.getPanes().add(titledPane);
+            }
+
+            // Update content of the TitledPane
+            VBox content = (VBox) titledPane.getContent();
+            content.getChildren().clear();
             for (String value : values) {
                 CheckBox checkBox = new CheckBox(value);
                 content.getChildren().add(checkBox);
             }
 
-            // Create TitledPane
-            int distinctCount = distinctCounts.getOrDefault(category, 0);
-            TitledPane titledPane = new TitledPane(category + " (" + distinctCount + ")", content);
+            // Update title with the new count
+            titledPane.setText(category + " (" + distinctCount + ")");
+        }
 
             // Add to Accordion
-            statsAccordion.getPanes().add(titledPane);
-        }
+            //statsAccordion.getPanes().add(titledPane);
     }
 }
 

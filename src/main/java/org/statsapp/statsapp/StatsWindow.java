@@ -8,9 +8,12 @@ import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.VBox;
+import javafx.stage.Stage;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -29,12 +32,21 @@ public class StatsWindow extends AnchorPane {
     private ScrollPane statsScrollPane;
     @FXML
     private Accordion statsAccordion;
+    @FXML
+    private Button showStatsBtn;
 
     private Connection sqlConn;
+    private ChartsController chartsController;
+    private Map<String, Integer> nationalitiesData = new HashMap<>();
+    private Map<String, Integer> rolesData = new HashMap<>();
+    private Map<String, Integer> yearsData = new HashMap<>();
 
     @FXML
     private void initialize() {
         statsTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+
+
+
         try {
             populateTableView();
 
@@ -48,22 +60,39 @@ public class StatsWindow extends AnchorPane {
                 calculateStats(ids);
             });
 
-        } catch (SQLException e) {
+        }
+        catch (SQLException e) {
             throw new RuntimeException(e);
-        } catch (ClassNotFoundException e) {
+        }
+        catch (ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
     }
 
     public StatsWindow() throws SQLException, ClassNotFoundException {
+        chartsController = new ChartsController();
         FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("stats-window.fxml"));
         fxmlLoader.setRoot(this);
         fxmlLoader.setController(this);
         try {
             fxmlLoader.load();
-        } catch (IOException e) {
+        }
+        catch (IOException e) {
             throw new RuntimeException("Failed to load fxml file" + e.getMessage(), e);
         }
+
+        showStatsBtn.setOnAction(event -> {
+            // Load the ChartsWindow.fxml
+
+            chartsController.setChartData(nationalitiesData, rolesData, yearsData);
+            System.out.println("In showStatsBtn Event: " + nationalitiesData.size());
+            //chartsController = new ChartsController();
+            // Create a new stage
+            Stage stage = new Stage();
+            stage.setTitle("Charts");
+            stage.setScene(new Scene(chartsController));
+            stage.show();
+        });
     }
 
     private Connection establishConnection(String url) throws SQLException {
@@ -138,8 +167,7 @@ public class StatsWindow extends AnchorPane {
         String queryPlaceholders = String.join(", ", Collections.nCopies(numIds, "?"));
 
         String query = "WITH SelectedPlayers AS ( " +
-                " SELECT * FROM Player WHERE ID IN (" + queryPlaceholders + ") " +
-                ") " +
+                " SELECT * FROM Player WHERE ID IN (" + queryPlaceholders + ")) " +
                 "SELECT 'Nationality' AS Category, Nationality AS Value, COUNT(*) AS Count " +
                 "FROM SelectedPlayers " +
                 "GROUP BY Nationality " +
@@ -153,8 +181,7 @@ public class StatsWindow extends AnchorPane {
                 "GROUP BY YEAR(Debut);";
 
         String distinctQuery = "WITH SelectedPlayers AS ( " +
-                " SELECT * FROM Player WHERE ID IN (" + queryPlaceholders + ") " +
-                ") " +
+                " SELECT * FROM Player WHERE ID IN (" + queryPlaceholders + ")) " +
                 "SELECT 'Nationality' AS Category, COUNT(DISTINCT Nationality) AS Count " +
                 "FROM SelectedPlayers " +
                 "UNION ALL " +
@@ -163,7 +190,6 @@ public class StatsWindow extends AnchorPane {
                 "UNION ALL " +
                 "SELECT 'Debut Year' AS Category, COUNT(DISTINCT YEAR(Debut)) AS Count " +
                 "FROM SelectedPlayers;";
-
 
         ResultSet resultSet = null;
         try (PreparedStatement preparedStatement = sqlConn.prepareStatement(query);
@@ -179,9 +205,9 @@ public class StatsWindow extends AnchorPane {
             resultSet = preparedStatement.executeQuery();
             ResultSet distinctResultSet = distinctStatement.executeQuery();
             displayStats(resultSet, distinctResultSet);
-        } catch (SQLException e) {
+        }
+        catch (SQLException e) {
             e.printStackTrace();
-
         }
 
         return resultSet;
@@ -196,12 +222,28 @@ public class StatsWindow extends AnchorPane {
         }
 
         Map<String, List<String>> categoryValues = new LinkedHashMap<>();
+//        Map<String, Integer> nationalitiesData = new HashMap<>();
+//        Map<String, Integer> rolesData = new HashMap<>();
+//        Map<String, Integer> yearsData = new HashMap<>();
+
         while (statsResult.next()) {
             String category = statsResult.getString("Category");
             String value = statsResult.getString("Value");
             int count = statsResult.getInt("Count");
             categoryValues.putIfAbsent(category, new ArrayList<>());
             categoryValues.get(category).add(value + " (" + count + ")");
+
+            switch (category) {
+                case "Nationality":
+                    nationalitiesData.put(value, count);
+                    break;
+                case "Role":
+                    rolesData.put(value, count);
+                    break;
+                case "Debut Year":
+                    yearsData.put(value, count);
+                    break;
+            }
         }
 
         // Update or create TitledPanes
@@ -221,6 +263,7 @@ public class StatsWindow extends AnchorPane {
             TitledPane titledPane = new TitledPane(category + " (" + distinctCount + ")", content);
             statsAccordion.getPanes().add(titledPane);
         }
+        chartsController.setChartData(nationalitiesData, rolesData, yearsData);
     }
 }
 

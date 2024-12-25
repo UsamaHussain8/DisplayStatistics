@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.chart.PieChart?>
+<?import javafx.scene.layout.VBox?>
+
+<fx:root type="javafx.scene.layout.VBox" xmlns:fx="http://javafx.com/fxml/1" spacing="20" alignment="CENTER" prefWidth="800" prefHeight="600">
+    <PieChart fx:id="nationalitiesChart" title="Nationalities" />
+    <PieChart fx:id="rolesChart" title="Roles" />
+    <PieChart fx:id="yearsChart" title="Years" />
+</fx:root>

@@ -2,6 +2,7 @@ package org.statsapp.statsapp;
 
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.Scene;
 import javafx.scene.chart.PieChart;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -12,12 +13,11 @@ import java.util.Map;
 
 public class ChartsController extends VBox {
 
+    public Scene scene;
     @FXML
     private PieChart nationalitiesChart;
-
     @FXML
     private PieChart rolesChart;
-
     @FXML
     private PieChart yearsChart;
 
@@ -25,6 +25,7 @@ public class ChartsController extends VBox {
         FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("ChartsWindow.fxml"));
         fxmlLoader.setRoot(this);
         fxmlLoader.setController(this);
+        scene = new Scene(this);
 
         nationalitiesChart = new PieChart();
         rolesChart = new PieChart();
@@ -41,8 +42,6 @@ public class ChartsController extends VBox {
     public void setChartData(Map<String, Integer> nationalitiesData,
                              Map<String, Integer> rolesData,
                              Map<String, Integer> yearsData) {
-
-        System.out.println(nationalitiesData.size());
         // Populate Nationalities Pie Chart
         nationalitiesChart.setData(convertToChartData(nationalitiesData));
 

@@ -46,7 +46,12 @@
                         <Cursor fx:constant="HAND" />
                      </cursor>
                   </Button>
-                  <Button fx:id="insertBtn" mnemonicParsing="false" text="Insert" textFill="#1d5190">
+                  <Button fx:id="insertBtn" mnemonicParsing="false" text="Insert" textFill="#8759d7">
+                     <font>
+                        <Font name="Calibri Light" size="14.0" />
+                     </font>
+                  </Button>
+                  <Button fx:id="updateBtn" layoutX="503.0" layoutY="19.0" mnemonicParsing="false" text="Update" textFill="#38bec3">
                      <font>
                         <Font name="Calibri Light" size="14.0" />
                      </font>

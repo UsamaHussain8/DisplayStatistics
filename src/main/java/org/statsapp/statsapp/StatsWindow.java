@@ -3,6 +3,10 @@ package org.statsapp.statsapp;
 import java.io.IOException;
 import java.lang.StringBuilder;
 
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.SimpleBooleanProperty;
+
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
@@ -15,6 +19,7 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
@@ -28,13 +33,18 @@ public class StatsWindow extends AnchorPane {
     @FXML private Accordion statsAccordion;
     @FXML private Button showStatsBtn;
     @FXML private Button insertBtn;
+    @FXML private Button updateBtn;
 
-    private Connection sqlConn;
+    public static Connection sqlConn;
     private Node originalContent;
     private ChartsController chartsController;
+    private PlayersController playersController;
+    private ObservableList<ObservableList<String>> selectedItems;
     private Map<String, Integer> nationalitiesData = new HashMap<>();
     private Map<String, Integer> rolesData = new HashMap<>();
     private Map<String, Integer> yearsData = new HashMap<>();
+
+    public static ArrayList<String> columnNames = new ArrayList<>();
 
     @FXML
     private void initialize() {
@@ -42,20 +52,41 @@ public class StatsWindow extends AnchorPane {
 
         insertBtn.setOnAction(event -> {showInsertForm();});
 
+        updateBtn.setOnAction(event -> {
+            if(selectedItems.size() != 0) {
+                Stage stage = new Stage();
+                stage.setTitle("Update Players");
+                stage.setScene(playersController.scene);
+                stage.show();
+
+                int updateResult = playersController.displayPlayers(selectedItems);
+//                if(updateResult == 1)
+//                    stage.close();
+            }
+            else {
+                Alert alert = new Alert(Alert.AlertType.ERROR);
+                alert.setTitle("Invalid");
+                alert.setContentText("No items selected");
+                alert.showAndWait();
+            }
+        });
+
         showStatsBtn.setOnAction(event -> {
-            // Load the ChartsWindow.fxml
-            chartsController.setChartData(nationalitiesData, rolesData, yearsData);
-            // Create a new stage
-            Stage stage = new Stage();
-            stage.setTitle("Charts");
-            stage.setScene(new Scene(chartsController));
-            stage.show();
+            if (chartsController != null) {
+                // Load the ChartsWindow.fxml
+                chartsController.setChartData(nationalitiesData, rolesData, yearsData);
+                // Create a new stage
+                Stage stage = new Stage();
+                stage.setTitle("Charts");
+                stage.setScene(chartsController.scene);
+                stage.show();
+            }
         });
 
         try {
             populateTableView();
 
-            ObservableList<ObservableList<String>> selectedItems = statsTable.getSelectionModel().getSelectedItems();
+            selectedItems = statsTable.getSelectionModel().getSelectedItems();
 
             statsTable.getSelectionModel().getSelectedItems().addListener((ListChangeListener<ObservableList<String>>) change -> {
                 int[] ids = new int[selectedItems.size()];
@@ -76,6 +107,7 @@ public class StatsWindow extends AnchorPane {
     public StatsWindow() throws SQLException, ClassNotFoundException {
         //originalContent = this.getChildren().get(0);
         chartsController = new ChartsController();
+        playersController = new PlayersController();
         FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("stats-window.fxml"));
         fxmlLoader.setRoot(this);
         fxmlLoader.setController(this);
@@ -299,6 +331,7 @@ public class StatsWindow extends AnchorPane {
 
             for (int i = 1; i <= columnCount; i++) {
                 String columnName = metaData.getColumnName(i);
+                columnNames.add(columnName);
 
                 // Skip the ID column (auto-increment field)
                 if (!columnName.equalsIgnoreCase("ID")) {

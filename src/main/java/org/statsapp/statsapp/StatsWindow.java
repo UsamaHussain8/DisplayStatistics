@@ -1,8 +1,25 @@
 package org.statsapp.statsapp;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.StringBuilder;
 
+import dk.dma.ais.binary.SixbitException;
+import dk.dma.ais.bus.AisBusSocket;
+import dk.dma.ais.json_decoder_helpers.Decoder;
+import dk.dma.ais.message.AisMessage;
+import dk.dma.ais.message.AisMessageException;
+import dk.dma.ais.packet.AisPacket;
+import dk.dma.ais.packet.AisPacketParser;
+import dk.dma.ais.packet.AisPacketReader;
+import dk.dma.ais.reader.AisReader;
+import dk.dma.ais.reader.AisReaders;
+import dk.dma.ais.reader.AisStreamReader;
+import dk.dma.ais.reader.AisUdpReader;
+import dk.dma.ais.sentence.CommentBlock;
+import dk.dma.ais.sentence.SentenceException;
+import dk.dma.ais.sentence.Vdm;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -23,8 +40,19 @@ import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
-import java.sql.*;
+import java.net.DatagramSocket;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Connection;
+import java.sql.Statement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.PreparedStatement;
 import java.util.*;
+import java.util.function.Consumer;
 
 public class StatsWindow extends AnchorPane {
     @FXML private TableView statsTable;
@@ -35,7 +63,7 @@ public class StatsWindow extends AnchorPane {
     @FXML private Button insertBtn;
     @FXML private Button updateBtn;
 
-    public static Connection sqlConn;
+    public static Connection mySqlConn;
     private Node originalContent;
     private ChartsController chartsController;
     private PlayersController playersController;
@@ -104,8 +132,9 @@ public class StatsWindow extends AnchorPane {
         }
     }
 
-    public StatsWindow() throws SQLException, ClassNotFoundException {
+    public StatsWindow() throws SQLException, ClassNotFoundException, SentenceException, AisMessageException, SixbitException, InterruptedException, IOException {
         //originalContent = this.getChildren().get(0);
+        mySqlConn = establishConnection();
         chartsController = new ChartsController();
         playersController = new PlayersController();
         FXMLLoader fxmlLoader = new FXMLLoader(getClass().getResource("stats-window.fxml"));
@@ -120,20 +149,109 @@ public class StatsWindow extends AnchorPane {
         if (!this.getChildren().isEmpty()) {
             originalContent = this.getChildren().get(0);
         }
+
+        String aisSentence = "!AIVDM,1,1,,A,181:Jqh02c1Qra`E46I<@9n@059l,0*30";
+        Vdm vdm = new Vdm();
+        try {
+            vdm.parse(aisSentence);
+        }
+        catch(SentenceException ex) {
+            throw new SentenceException(ex.getMessage());
+        }
+
+        UDPReceiver.receiveAisMessage();
+
+        AisReader reader = AisReaders.createUdpReader(4001);
+        reader.registerHandler(new Consumer<AisMessage>() {
+            @Override
+            public void accept(AisMessage aisMessage) {
+                System.out.println("message id: " + aisMessage.getMsgId());
+            }
+        });
+        // Register error handler if available
+        try {
+            reader.registerPacketHandler(packet -> {
+                System.out.println("Raw packet received: " + packet);
+            });
+            System.out.println("Packet handler registered successfully");
+        } catch (Exception e) {
+            System.out.println("Could not register packet handler: " + e.getMessage());
+        }
+
+        System.out.println("Starting AIS reader on port 4001...");
+        reader.start();
+        System.out.println("AIS reader started, waiting for messages...");
+        System.out.println("Reader status: " + reader.getStatus());
+
+        // Add a timeout mechanism instead of blocking indefinitely
+        Thread readerThread = new Thread(() -> {
+            try {
+                reader.join();
+            } catch (InterruptedException e) {
+                System.out.println("Reader thread interrupted");
+            }
+        });
+
+        readerThread.start();
+
+        // Wait for a reasonable time and check status
+        Thread.sleep(5000);
+        System.out.println("After 5 seconds - Reader status: " + reader.getStatus());
+
+        // Keep the main thread alive
+        while (readerThread.isAlive()) {
+            Thread.sleep(1000);
+            System.out.println("Still waiting... Reader alive: " + reader.getStatus());
+        }
+        String aisSentence1 = "!AIVDM,2,1,9,B,53nFBv01SJ<thHp6220H4heHTf2222222222221?50:454o<`9QSlUDp,0*09";
+        String aisSentence2 = "!AIVDM,2,2,9,B,888888888888880,2*2E";
+
+        AisPacket packet = AisPacket.from(aisSentence1);
+        System.out.println("Packet read AIS message as: " + packet.getAisMessage());
+        Vdm vdm1 = new Vdm();
+        vdm1.parse(aisSentence1);
+        vdm1.parse(aisSentence2);
+
+//        AisMessage aisMessage1 = AisMessage.getInstance(vdm1);
+//        System.out.println(aisMessage1);
+
+//        String aisSentenceForJson = "!AIVDM,1,1,,A,181:Jqh02c1Qra`E46I<@9n@059l,0*30";
+//        Decoder decoder = new Decoder(aisSentenceForJson);
+//        String json = decoder.decode(true);
+//        System.out.println(json);
     }
 
-    private Connection establishConnection(String url) throws SQLException {
-        Connection sqlServerConnection = DriverManager.getConnection(url);
+    private Connection establishConnection() throws SQLException {
+        String url = "jdbc:mysql://localhost:3306/players";
+        String username = "root";
+        String password = "SqlDatabase<3";
+        Connection mySqlConnection = null;
+        try {
+            // Load the JDBC driver (optional in recent versions)
+            Class.forName("com.mysql.cj.jdbc.Driver");
 
-        return sqlServerConnection;
+            // Create connection
+            mySqlConnection = DriverManager.getConnection(url, username, password);
+            System.out.println("Connected to MySQL successfully!");
+
+
+        } catch (ClassNotFoundException e) {
+            System.out.println("MySQL JDBC driver not found.");
+            e.printStackTrace();
+        } catch (SQLException e) {
+            System.out.println("Connection failed.");
+            e.printStackTrace();
+        }
+
+        return mySqlConnection;
     }
 
-    private ResultSet getData(String url) {
+    private ResultSet getData() {
         ResultSet players;
         try {
-            sqlConn = establishConnection(url);
-            Statement getPlayersStatement = sqlConn.createStatement();
-            players = getPlayersStatement.executeQuery("SELECT * FROM Players.dbo.player");
+            mySqlConn = establishConnection();
+            Statement getPlayersStatement = mySqlConn.createStatement();
+            players = getPlayersStatement.executeQuery("SELECT * FROM players.player");
         }
         catch (SQLException e) {
             throw new RuntimeException(e);
@@ -143,10 +261,7 @@ public class StatsWindow extends AnchorPane {
     }
 
     private void populateTableView() throws SQLException, ClassNotFoundException {
-        Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
-        String url = "jdbc:sqlserver://localhost:1433;user=admin;password=test;databaseName=Players;encrypt=False";
-
-        ResultSet players = getData(url);
+        ResultSet players = getData();
 
         ResultSetMetaData metaData = players.getMetaData();
         int columnCount = metaData.getColumnCount();
@@ -193,34 +308,42 @@ public class StatsWindow extends AnchorPane {
         int numIds = ids.length;
         String queryPlaceholders = String.join(", ", Collections.nCopies(numIds, "?"));
 
-        String query = "WITH SelectedPlayers AS ( " +
-                " SELECT * FROM Player WHERE ID IN (" + queryPlaceholders + ")) " +
-                "SELECT 'Nationality' AS Category, Nationality AS Value, COUNT(*) AS Count " +
-                "FROM SelectedPlayers " +
-                "GROUP BY Nationality " +
-                "UNION ALL " +
-                "SELECT 'Role' AS Category, Role AS Value, COUNT(*) AS Count " +
-                "FROM SelectedPlayers " +
-                "GROUP BY Role " +
-                "UNION ALL " +
-                "SELECT 'Debut Year' AS Category, CAST(YEAR(Debut) AS VARCHAR) AS Value, COUNT(*) AS Count " +
-                "FROM SelectedPlayers " +
-                "GROUP BY YEAR(Debut);";
+        String query = "SELECT 'Nationality' AS Category, Nationality AS Value, COUNT(*) AS Count" +
+        "FROM (" +
+                "SELECT * FROM players.player WHERE ID IN (" + queryPlaceholders + ")" +
+        ") AS SelectedPlayers" +
+        "GROUP BY Nationality" +
+        "UNION ALL" +
+        "SELECT 'Role' AS Category, Role AS Value, COUNT(*) AS Count" +
+        "FROM (" +
+                "SELECT * FROM players.player WHERE ID IN (" + queryPlaceholders + ")" +
+        ") AS SelectedPlayers" +
+        "GROUP BY Role" +
+        "UNION ALL" +
+        "SELECT 'Debut Year' AS Category, CAST(YEAR(Debut) AS CHAR) AS Value, COUNT(*) AS Count" +
+        "FROM (" +
+                "SELECT * FROM players.player WHERE ID IN (" + queryPlaceholders + ")" +
+        ") AS SelectedPlayers" +
+        "GROUP BY YEAR(Debut);";
 
-        String distinctQuery = "WITH SelectedPlayers AS ( " +
-                " SELECT * FROM Player WHERE ID IN (" + queryPlaceholders + ")) " +
-                "SELECT 'Nationality' AS Category, COUNT(DISTINCT Nationality) AS Count " +
-                "FROM SelectedPlayers " +
-                "UNION ALL " +
-                "SELECT 'Role' AS Category, COUNT(DISTINCT Role) AS Count " +
-                "FROM SelectedPlayers " +
-                "UNION ALL " +
-                "SELECT 'Debut Year' AS Category, COUNT(DISTINCT YEAR(Debut)) AS Count " +
-                "FROM SelectedPlayers;";
+        String distinctQuery = "SELECT 'Nationality' AS Category, COUNT(DISTINCT Nationality) AS Count" +
+                "FROM (" +
+                "    SELECT * FROM players.player WHERE ID IN (" + queryPlaceholders + ")" +
+                ") AS SelectedPlayers" +
+                "UNION ALL" +
+                "SELECT 'Role' AS Category, COUNT(DISTINCT Role) AS Count" +
+                "FROM (" +
+                "    SELECT * FROM players.player WHERE ID IN (" + queryPlaceholders + ")" +
+                ") AS SelectedPlayers" +
+                "UNION ALL" +
+                "SELECT 'Debut Year' AS Category, COUNT(DISTINCT YEAR(Debut)) AS Count" +
+                "FROM (" +
+                "    SELECT * FROM players.player WHERE ID IN (" + queryPlaceholders + ")" +
+                ") AS SelectedPlayers;";
 
         ResultSet resultSet = null;
-        try (PreparedStatement preparedStatement = sqlConn.prepareStatement(query);
-             PreparedStatement distinctStatement = sqlConn.prepareStatement(distinctQuery)) {
+        try (PreparedStatement preparedStatement = mySqlConn.prepareStatement(query);
+             PreparedStatement distinctStatement = mySqlConn.prepareStatement(distinctQuery)) {
             // Set the parameters for the placeholders
             for (int i = 0; i < numIds; i++) {
                 // Set the parameters for the first occurrence
@@ -323,8 +446,8 @@ public class StatsWindow extends AnchorPane {
         Map<String, TextField> fieldInputs = new LinkedHashMap<>();
 
         // Fetch field names dynamically from the database
-        try (Statement statement = sqlConn.createStatement();
-             ResultSet resultSet = statement.executeQuery("SELECT TOP(1) * FROM Player")) {
+        try (Statement statement = mySqlConn.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT FROM players.player LIMIT 1;")) {
 
             ResultSetMetaData metaData = resultSet.getMetaData();
             int columnCount = metaData.getColumnCount();
@@ -411,7 +534,7 @@ public class StatsWindow extends AnchorPane {
         values.setLength(values.length() - 2);
 
         String insertQuery = "INSERT INTO Player (" + columnNames + ") VALUES (" + values + ")";
-        try (Statement statement = sqlConn.createStatement()) {
+        try (Statement statement = mySqlConn.createStatement()) {
             statement.executeUpdate(insertQuery);
             System.out.println("Record inserted successfully!");
             populateTableView();

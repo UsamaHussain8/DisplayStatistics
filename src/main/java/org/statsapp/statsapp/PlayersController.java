@@ -52,7 +52,7 @@ public class PlayersController extends AnchorPane {
             query.append(" WHERE ID = 6;");
 
             try {
-                Statement statement = StatsWindow.sqlConn.createStatement();
+                Statement statement = StatsWindow.mySqlConn.createStatement();
                 int result = statement.executeUpdate(query.toString());
                 if (result == 1) {
                     Alert alert = new Alert(Alert.AlertType.INFORMATION);
